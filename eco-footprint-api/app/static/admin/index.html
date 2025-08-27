@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>Carbon Admin</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+        :root {
+            --b: #e5e7eb;
+            --bg: #f9fafb;
+            --fg: #111827;
+            --muted: #6b7280;
+            --accent: #111827;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+            background: var(--bg);
+            color: var(--fg);
+        }
+
+        .container {
+            max-width: 920px;
+            margin: 2rem auto;
+            padding: 1.25rem;
+        }
+
+        .card {
+            background: white;
+            border: 1px solid var(--b);
+            border-radius: 12px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .row {
+            display: flex;
+            gap: 1rem;
+            align-items: flex-end;
+            flex-wrap: wrap;
+        }
+
+        label {
+            display: block;
+            font-size: .875rem;
+            color: var(--muted);
+            margin-bottom: .25rem;
+        }
+
+        input,
+        select,
+        button,
+        textarea {
+            border: 1px solid var(--b);
+            border-radius: 10px;
+            padding: .6rem .75rem;
+            font-size: 1rem;
+        }
+
+        input,
+        select,
+        textarea {
+            width: 100%;
+            background: white;
+        }
+
+        button {
+            background: var(--accent);
+            color: white;
+            cursor: pointer;
+        }
+
+        button:disabled {
+            opacity: .6;
+            cursor: not-allowed;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(12, 1fr);
+            gap: 1rem;
+        }
+
+        .col-6 {
+            grid-column: span 6;
+        }
+
+        .col-4 {
+            grid-column: span 4;
+        }
+
+        .col-3 {
+            grid-column: span 3;
+        }
+
+        .title {
+            font-weight: 700;
+            font-size: 1.125rem;
+            margin-bottom: .5rem;
+        }
+
+        .muted {
+            color: var(--muted);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th,
+        td {
+            border-bottom: 1px solid var(--b);
+            padding: .5rem;
+            text-align: left;
+            font-size: .95rem;
+        }
+
+        .pill {
+            padding: .25rem .5rem;
+            border-radius: 999px;
+            background: #f3f4f6;
+            display: inline-block;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="title">Admin – Carbon Offset</div>
+            <div class="row">
+                <div style="flex:1 1 260px">
+                    <label>Shop domain</label>
+                    <input id="shop" placeholder="mystore.myshopify.com" />
+                </div>
+                <div style="flex:1 1 220px">
+                    <label>Admin token (Bearer)</label>
+                    <input id="token" placeholder="paste if ADMIN_TOKEN is set" />
+                </div>
+                <div>
+                    <button id="load">Load</button>
+                </div>
+            </div>
+            <div class="muted" style="margin-top:.5rem">Tip: Use query params ?shop=&token= to prefill.</div>
+        </div>
+
+        <div class="card">
+            <div class="title">Widget Configuration</div>
+            <div class="grid">
+                <div class="col-6">
+                    <label>Placement (CSS selector)</label>
+                    <input id="placement" placeholder="#cart_container" />
+                </div>
+                <div class="col-6">
+                    <label>Verbiage</label>
+                    <input id="verbiage" placeholder="Reduce my order's carbon footprint" />
+                </div>
+                <div class="col-3">
+                    <label>Rate</label>
+                    <input id="rate" type="number" min="0" step="0.001" placeholder="0.02" />
+                </div>
+                <div class="col-3" style="display:flex; align-items:end">
+                    <button id="save">Save</button>
+                </div>
+            </div>
+            <div id="saveStatus" class="muted" style="margin-top:.5rem"></div>
+        </div>
+
+        <div class="card">
+            <div class="title">Invoice Preview</div>
+            <div class="row">
+                <div style="flex:0 0 200px">
+                    <label>Month (YYYY-MM)</label>
+                    <input id="month" />
+                </div>
+                <div>
+                    <button id="preview">Preview</button>
+                </div>
+            </div>
+            <div id="invoice" style="margin-top:1rem"></div>
+        </div>
+
+        <div class="card">
+            <div class="title">Recent Opt-ins</div>
+            <div class="row">
+                <div>
+                    <button id="loadOptins">Load last 50</button>
+                </div>
+            </div>
+            <div style="margin-top:1rem; overflow:auto">
+                <table id="optinsTable">
+                    <thead>
+                        <tr>
+                            <th>Created</th>
+                            <th>Cart</th>
+                            <th>Subtotal</th>
+                            <th>Estimate</th>
+                            <th>Currency</th>
+                            <th>Payload</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = new URL("/", location.href).origin;
+        const $ = (id) => document.getElementById(id);
+        const fmtMoney = (cents, cur = "USD") => new Intl.NumberFormat(undefined, { style: "currency", currency: cur }).format((cents || 0) / 100);
+
+        function bearer() {
+            const t = $("token").value.trim() || localStorage.getItem("carbon_admin_token") || "";
+            if (t) return { "Authorization": "Bearer " + t };
+            return {};
+        }
+        async function jget(path, params) {
+            const url = new URL(path, API_BASE);
+            if (params) Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+            const res = await fetch(url, { headers: { ...bearer() } });
+            if (!res.ok) throw new Error(await res.text());
+            return res.json();
+        }
+        async function jput(path, params, body) {
+            const url = new URL(path, API_BASE);
+            if (params) Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+            const res = await fetch(url, { method: "PUT", headers: { "Content-Type": "application/json", ...bearer() }, body: JSON.stringify(body) });
+            if (!res.ok) throw new Error(await res.text());
+            return res.json();
+        }
+
+        function setMonthDefault() {
+            const d = new Date();
+            const ym = d.toISOString().slice(0, 7);
+            $("month").value = ym;
+        }
+
+        $("load").onclick = async () => {
+            const shop = $("shop").value.trim();
+            if (!shop) return;
+            const cfg = await jget("/v1/admin/merchant", { shop });
+            $("placement").value = cfg.placement;
+            $("verbiage").value = cfg.verbiage;
+            $("rate").value = cfg.rate;
+            $("saveStatus").textContent = "Config loaded.";
+            if ($("token").value) localStorage.setItem("carbon_admin_token", $("token").value);
+        };
+
+        $("save").onclick = async () => {
+            const shop = $("shop").value.trim();
+            const body = { placement: $("placement").value, verbiage: $("verbiage").value, rate: parseFloat($("rate").value) };
+            await jput("/v1/admin/merchant", { shop }, body);
+            $("saveStatus").textContent = "Saved ✓";
+        };
+
+        $("preview").onclick = async () => {
+            const shop = $("shop").value.trim();
+            const month = $("month").value.trim();
+            const inv = await jget("/v1/admin/invoices", { shop, month });
+            $("invoice").innerHTML = `
+        <div class="pill">Month: ${inv.month}</div>
+        <div style="margin-top:.5rem">Opt-ins: <b>${inv.opt_in_count}</b></div>
+        <div>Total estimated: <b>${fmtMoney(inv.total_estimate_cents)}</b></div>
+      `;
+        };
+
+        $("loadOptins").onclick = async () => {
+            const shop = $("shop").value.trim();
+            const month = $("month").value.trim();
+            const rows = await jget("/v1/admin/opt-ins", { shop, month, limit: 50 });
+            const tbody = document.querySelector("#optinsTable tbody");
+            tbody.innerHTML = rows.map(r => `
+        <tr>
+          <td>${new Date(r.created_at).toLocaleString()}</td>
+          <td><code>${r.cart_token.slice(0, 8)}…</code></td>
+          <td>${fmtMoney(r.subtotal_cents, r.currency)}</td>
+          <td>${fmtMoney(r.estimate_cents, r.currency)}</td>
+          <td>${r.currency}</td>
+          <td><code>${JSON.stringify(r.payload)}</code></td>
+        </tr>
+      `).join("");
+        };
+
+        // Prefill from URL
+        const qp = new URLSearchParams(location.search);
+        if (qp.get("shop")) $("shop").value = qp.get("shop");
+        if (qp.get("token")) $("token").value = qp.get("token");
+        setMonthDefault();
+    </script>
+</body>
+
+</html>
