@@ -4,15 +4,11 @@ import {
   InlineStack,
   reactExtension,
   Text,
-  useApi,
   useApplyAttributeChange,
   useApplyCartLinesChange,
   useCartLines,
   useCurrency,
-  useInstructions,
   useSettings,
-  useTranslate,
-  useExtensionLanguage,
 } from "@shopify/ui-extensions-react/checkout";
 
 // 1. Choose an extension target
@@ -22,14 +18,11 @@ export default reactExtension(
 );
 
 function Extension() {
-  const translate = useTranslate();
-  const { extension } = useApi();
-  const instructions = useInstructions();
   const currency = useCurrency();
+
   const cartLines = useCartLines();
   const applyCartLinesChange = useApplyCartLinesChange();
   const applyAttributeChange = useApplyAttributeChange();
-  const language = useExtensionLanguage();
   const {
     api_base = "https://localhost:8000",
     offset_variant_gid = "gid://shopify/ProductVariant/1234567890",
@@ -39,6 +32,7 @@ function Extension() {
     offset_variant_gid: string;
     label: string;
   };
+
   // compute subtotal from lines (shipping/taxes excluded)
   const subtotalCents = Math.round(
     cartLines.reduce((sum, l) => {
@@ -50,9 +44,6 @@ function Extension() {
       return sum + amt * 100;
     }, 0),
   );
-
-  console.log("translate :>> ", translate);
-  console.log("language :>> ", language);
 
   const existing = cartLines.find(
     (l) =>
@@ -70,20 +61,17 @@ function Extension() {
     const est = await fetch(`${api_base}/v1/estimate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      // backend doesn’t need full items; subtotal is enough for the 2% formula
       body: JSON.stringify({
-        shop: "", // optional in your API
-        currency,
+        shop: "foobar-pe",
+        currency: currency.isoCode,
         items: [{ price_cents: subtotalCents, quantity: 1 }],
       }),
     }).then((r) => r.json());
 
-    // quantity math: use a $0.01 variant and set qty = estimate_cents
     const unitCents = 1;
     const qty = Math.max(0, Math.round(est.estimate_cents / unitCents));
 
     if (checked) {
-      // add or replace the line
       if (existing) {
         await applyCartLinesChange({
           type: "updateCartLine",
@@ -98,7 +86,7 @@ function Extension() {
           attributes: [{ key: "carbon_offset", value: "true" }],
         });
       }
-      // write a checkout/cart attribute for analytics/invoicing
+
       await applyAttributeChange({
         type: "updateAttribute",
         key: "carbon_offset_opt_in",
@@ -109,14 +97,14 @@ function Extension() {
         key: "carbon_offset_cents",
         value: String(est.estimate_cents),
       });
-      // notify backend for monthly invoice aggregation
+
       await fetch(`${api_base}/v1/opt-in`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          shop: "",
-          cart_token: "", // not available in worker; keep blank or use session/token strategy on server
-          currency,
+          shop: "foobar-pe",
+          cart_token: "1234567890",
+          currency: currency.isoCode,
           subtotal_cents: est.subtotal_cents,
           estimate_cents: est.estimate_cents,
           payload: { source: "checkout-ui" },
@@ -159,7 +147,7 @@ function Extension() {
       {!checked ? (
         <Text appearance="subdued">
           Estimated offset on this order is ~{" "}
-          {formatMoney(currency.toString(), subtotalCents * 0.02)}
+          {formatMoney(currency.isoCode.toString(), subtotalCents * 0.02)}
         </Text>
       ) : (
         <Text emphasis="bold">Carbon offset will be added to your order.</Text>

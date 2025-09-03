@@ -2,7 +2,7 @@
 
 client_id = "9a77351f6dac0427e10d298b967a4f77"
 name = "eco-footprint"
-application_url = "https://hot-mom-epson-morris.trycloudflare.com"
+application_url = "https://computed-flame-coated-cinema.trycloudflare.com"
 embedded = true
 handle = "eco-footprint"
 
@@ -26,7 +26,7 @@ api_version = "2025-07"
 scopes = "write_products"
 
 [auth]
-redirect_urls = ["https://hot-mom-epson-morris.trycloudflare.com/auth/callback", "https://hot-mom-epson-morris.trycloudflare.com/auth/shopify/callback", "https://hot-mom-epson-morris.trycloudflare.com/api/auth/callback"]
+redirect_urls = ["https://computed-flame-coated-cinema.trycloudflare.com/auth/callback", "https://computed-flame-coated-cinema.trycloudflare.com/auth/shopify/callback", "https://computed-flame-coated-cinema.trycloudflare.com/api/auth/callback"]
 
 [pos]
 embedded = false
